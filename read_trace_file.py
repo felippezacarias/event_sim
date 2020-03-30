@@ -47,16 +47,25 @@ def read_prv_file(filename):
 
     return header,nodes_,record_list
 
-def separate_trace_record(record_list):
+def separate_trace_record(record_list_):
     state_list = []
     event_list = []
     communication_list = []
 
-    state_list = [x for x in record_list if isinstance(x,StateRecord)]
-    event_list = [x for x in record_list if isinstance(x,EventRecord)]
-    communication_list = [x for x in record_list if isinstance(x,CommunicationRecord)]
+    state_list = [x for x in record_list_ if isinstance(x,StateRecord)]
+    event_list = [x for x in record_list_ if isinstance(x,EventRecord)]
+    communication_list = [x for x in record_list_ if isinstance(x,CommunicationRecord)]
 
     return state_list,event_list,communication_list
+
+def separate_record(record_list_):
+    record_list = []
+    communication_list = []
+
+    record_list = [x for x in record_list_ if (isinstance(x,StateRecord) or isinstance(x,EventRecord))]
+    communication_list = [x for x in record_list_ if isinstance(x,CommunicationRecord)]
+
+    return record_list,communication_list
 
 def read_pcf_file(filename):
 

@@ -32,7 +32,16 @@ class Record(object):
         return self.duration
     
     def get_arriving_time(self):
-        pass
+        return 0
+
+    def get_begin_time(self):
+        return 0
+
+    def get_end_time(self):
+        return 0
+    
+    def get_state(self):
+        return 0
 
     def get_task_id(self):
         return self.task_id
@@ -54,14 +63,18 @@ class EventRecord(Record):
             value=list_args.pop(0)
             self.event_type[key] = value
 
-
+    def get_begin_time(self):
+        return self.absolute_time
+    
+    def set_begin_time(self,time_):
+        self.absolute_time = time_
     
     def get_arriving_time(self):
         return self.absolute_time
 
     def __str__(self):
         return (str(self.type.value) +":"+ Record.__str__(self) + ":" + str(self.absolute_time) + ":" + 
-                str(self.event_type))
+                str(self.event_type).replace(', ',':').replace("u'","").replace("'","").replace(' ','')[1:-1])
 
 
 class StateRecord(Record):
@@ -118,6 +131,33 @@ class CommunicationRecord(Record):
     def get_arriving_time(self):
         return self.lsend
 
+    def get_lsend_time(self):
+        return self.lsend
+
+    def get_psend_time(self):
+        return self.psend
+
+    def get_lrecv_time(self):
+        return self.lrecv
+
+    def get_precv_time(self):
+        return self.precv
+
+    def set_lsend_time(self,time_):
+        self.lsend = time_
+
+    def set_psend_time(self,time_):
+        self.psend = time_
+
+    def set_lrecv_time(self,time_):
+        self.lrecv = time_
+
+    def set_precv_time(self,time_):
+        self.precv = time_
+
+    def get_task_recv_id(self):
+        return self.task_recv_id
+    
     def __str__(self):
         return (str(self.type.value) +":"+  Record.__str__(self) + ":" + str(self.lsend) + ":" + str(self.psend) + ":" + 
                 str(self.cpu_recv_id) + ":" + str(self.ptask_recv_id) + ":" + str(self.task_recv_id) + ":" + str(self.thread_recv_id) + ":" + 

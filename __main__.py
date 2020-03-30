@@ -7,32 +7,35 @@ from enum_sim import RecordType
 
 if __name__ == '__main__':
 
-    if(len(sys.argv) <= 1):
-        print("Arg filename required! Run python main.py <filename>")
+    if(len(sys.argv) <= 2):
+        print("Arg filename required! Run python main.py <filename_ref> <filename_interf_profile>")
         exit(0)
 
-    filename = sys.argv[1]
-    state_dict, event_dict = read_trace_file.read_pcf_file(filename+".pcf")
+    filename_ref = sys.argv[1]
+    state_dict, event_dict = read_trace_file.read_pcf_file(filename_ref+".pcf")
 
-    header, nodes_conf, record_list = read_trace_file.read_prv_file(filename+".prv")
-    state_list, event_list, communication_list = read_trace_file.separate_trace_record(record_list)
+    header, nodes_conf, record_list = read_trace_file.read_prv_file(filename_ref+".prv")
 
-    duration = tools.list_duration(state_list,state_dict)
-    tools.compute_ecdf(duration)
+    filename_interf_profile = sys.argv[2]
+    _, _, profile_list = read_trace_file.read_prv_file(filename_interf_profile+".prv")
+
+    duration = tools.list_duration(profile_list,state_dict)
+    xx, yy = tools.compute_ecdf(duration)
 
     print(nodes_conf)
-    print(state_list[0])
-    print(event_list[0])
-    print(communication_list[0])
 
     task_list = [i for i in range(1,nodes_conf[0]+1)]
 
     task_id = task_list.pop(1)
+    print(task_id)
+    print(task_list)
 
-    tools.scale_trace(state_list,state_dict,task_list,task_id)
+    tools.scale_trace(record_list,state_dict,task_list,task_id)
     file = open("test_state.prv","w") 
     file.write(header)
-    for record in state_list:
+    #TODO: Sort list 
+    for record in record_list:
+        #if(isinstance(record,StateRecord)):
         file.write(str(record)+"\n")
     file.close()
 
