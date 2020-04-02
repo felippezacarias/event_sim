@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     task_list = [i for i in range(1,nodes_conf[0]+1)]
 
-    task_id = task_list.pop(1)
+    task_id = task_list.pop(3)
     print(task_id)
     print(task_list)
 

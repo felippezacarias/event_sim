@@ -72,7 +72,7 @@ def scale_trace(record_list,state_dict,task_list,taskid):
     begin_dict = {}
     end_dict = {}
     comm_rec_list = []
-    comm_changed = []
+    task_list_order = []
 
     for record in record_list:
         #communication events are never the first record
@@ -85,6 +85,10 @@ def scale_trace(record_list,state_dict,task_list,taskid):
             first_record = False
         elif(isinstance(record,CommunicationRecord)):
             comm_rec_list.append(record)
+            if(record.get_task_id() == taskid):
+                if(record.get_task_recv_id() not in task_list_order):
+                    task_list_order.append(record.get_task_recv_id())
+
         elif(record.get_task_id() == taskid):
             update_record(record,state_dict,begin_dict,end_dict,False)
 
@@ -92,6 +96,11 @@ def scale_trace(record_list,state_dict,task_list,taskid):
         update_comm_record(record,taskid,end_dict)
 
     for task_id_ in task_list:
+        if(task_id_ not in task_list_order):
+            task_list_order.append(task_id_)
+
+
+    for task_id_ in task_list_order:
         first_record = True
         for record in record_list:
             if(record.get_task_id() == task_id_):
