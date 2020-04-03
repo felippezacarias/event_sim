@@ -8,3 +8,4 @@ class RecordType(Enum):
 
 #Global constant
 GLOBAL_STATE_RUNNING = "Running"
+GLOBAL_STATE_WAITING = "Wait/WaitAll"

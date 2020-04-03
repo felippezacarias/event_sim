@@ -56,14 +56,17 @@ def read_prv_file(filename):
 
     return header,node_conf,record_list
 
-def separate_trace_record(record_list_):
+def separate_trace_record(record_list_,state,event,comm):
     state_list = []
     event_list = []
     communication_list = []
 
-    state_list = [x for x in record_list_ if isinstance(x,StateRecord)]
-    event_list = [x for x in record_list_ if isinstance(x,EventRecord)]
-    communication_list = [x for x in record_list_ if isinstance(x,CommunicationRecord)]
+    if state:
+        state_list = [x for x in record_list_ if isinstance(x,StateRecord)]
+    if event:
+        event_list = [x for x in record_list_ if isinstance(x,EventRecord)]
+    if comm:
+        communication_list = [x for x in record_list_ if isinstance(x,CommunicationRecord)]
 
     return state_list,event_list,communication_list
 

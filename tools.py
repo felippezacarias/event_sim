@@ -1,5 +1,11 @@
-from enum_sim import GLOBAL_STATE_RUNNING
+from enum_sim import GLOBAL_STATE_RUNNING,GLOBAL_STATE_WAITING
 from event import Record,EventRecord,StateRecord,CommunicationRecord
+
+def min_wait_duration(record_list,state_dict): 
+    duration_list =  ([x.get_duration() for x in record_list 
+                        if((state_dict[x.get_state()] == GLOBAL_STATE_WAITING) and 
+                            (isinstance(x,StateRecord))) ])
+    return min(duration_list)
 
 def list_duration(record_list,state_dict,interf_task): 
     return ([x.get_duration() for x in record_list 
@@ -94,6 +100,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     end_dict = {}
     comm_rec_list = []
     task_list_order = []
+    min_wait = min_wait_duration(record_list,state_dict)
 
     for record in record_list:
         if(isinstance(record,CommunicationRecord)):
