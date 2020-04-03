@@ -17,7 +17,7 @@ def get_scale(state,state_dict):
         return 1.5 #change to percentile
     return 1
 
-def update_record(record,state_dict,begin_dict,end_dict,keep_ratio=False):
+def update_record(record,state_dict,end_dict,keep_ratio=False):
     curr_begin = record.get_begin_time()
     if(isinstance(record,EventRecord)):
         if(curr_begin in end_dict):
@@ -39,7 +39,7 @@ def update_record(record,state_dict,begin_dict,end_dict,keep_ratio=False):
                 new_end = max(new_end,end_dict[curr_end])
 
             record.set_end_time(new_end)
-            begin_dict[curr_begin] = new_begin
+            end_dict[curr_begin] = new_begin
             end_dict[curr_end] = new_end
         #else: #problem with the threads records
         #    new_end = end_dict[curr_end]            
@@ -69,7 +69,6 @@ def update_comm_record(record,task_id,end_dict):
 #TODO: make it work with multiple threads per task
 def scale_trace(record_list,state_dict,task_list,taskid):
     first_record = True
-    begin_dict = {}
     end_dict = {}
     comm_rec_list = []
     task_list_order = []
@@ -80,7 +79,7 @@ def scale_trace(record_list,state_dict,task_list,taskid):
             (first_record)): 
             curr_begin = record.get_begin_time()
             curr_end = record.get_end_time()
-            begin_dict[curr_begin] = curr_begin
+            end_dict[curr_begin] = curr_begin
             end_dict[curr_end] = curr_end
             first_record = False
         elif(isinstance(record,CommunicationRecord)):
@@ -90,7 +89,7 @@ def scale_trace(record_list,state_dict,task_list,taskid):
                     task_list_order.append(record.get_task_recv_id())
 
         elif(record.get_task_id() == taskid):
-            update_record(record,state_dict,begin_dict,end_dict,False)
+            update_record(record,state_dict,end_dict,False)
 
     for record in comm_rec_list:
         update_comm_record(record,taskid,end_dict)
@@ -108,12 +107,12 @@ def scale_trace(record_list,state_dict,task_list,taskid):
                 curr_end = record.get_end_time()
                 if((record.get_task_id() == task_id_) and
                     (first_record)):
-                    begin_dict[curr_begin] = curr_begin
+                    end_dict[curr_begin] = curr_begin
                     end_dict[curr_end] = curr_end
                     first_record = False
                 elif((record.get_task_id() == task_id_) and
                     (not isinstance(record,CommunicationRecord))):
-                    update_record(record,state_dict,begin_dict,end_dict,True)
+                    update_record(record,state_dict,end_dict,True)
         
         for record in comm_rec_list:
             update_comm_record(record,task_id_,end_dict)
