@@ -1,10 +1,10 @@
 from enum_sim import GLOBAL_STATE_RUNNING
 from event import Record,EventRecord,StateRecord,CommunicationRecord
 
-def list_duration(record_list,state_dict): 
+def list_duration(record_list,state_dict,interf_task): 
     return ([x.get_duration() for x in record_list 
                 if((state_dict[x.get_state()] == GLOBAL_STATE_RUNNING) and 
-                    (isinstance(x,StateRecord)) and (x.get_task_id == 1)) ])
+                    (isinstance(x,StateRecord)) and (x.get_task_id() == interf_task)) ])
 
 def compute_ecdf(duration_list):
     xx = sorted(duration_list)
@@ -12,22 +12,40 @@ def compute_ecdf(duration_list):
     yy = [float(k)/n for k in range(0,n)]
     return xx,yy
 
-def get_scale(state,state_dict):
-    if(state_dict[state] == GLOBAL_STATE_RUNNING): # running
-        return 1.5 #change to percentile
+def percentile_duration(ecdf,duration):
+    # We return the first occurence
+    duration_index = ecdf[0].index(duration)
+    ref_percentile = ecdf[1][duration_index]
+
+    prof_percent_index = ecdf[3].index(ref_percentile)
+    prof_duration = ecdf[2][prof_percent_index]
+
+    return prof_duration
+
+def slowdown_duration_test(ecdf,duration,state):
+    if(state == GLOBAL_STATE_RUNNING): # running
+        return 1.5
     return 1
 
-def update_record(record,state_dict,end_dict,keep_ratio=False):
+def slowdown_duration(ecdf,duration,state):
+    if(state == GLOBAL_STATE_RUNNING): # running
+        return percentile_duration(ecdf,duration)
+    return duration
+
+def update_record(record,state_dict,end_dict,ecdf,keep_ratio=False):
     curr_begin = record.get_begin_time()
     if(isinstance(record,EventRecord)):
         if(curr_begin in end_dict):
             new_begin = end_dict[curr_begin]
             record.set_begin_time(new_begin)   
     else:
-        duration = round(record.get_duration() * get_scale(record.get_state(),state_dict))
         # If it is running keep the duration for non interfered tasks
-        if(keep_ratio):
-            duration = record.get_duration()
+        duration = record.get_duration()
+        if not keep_ratio:
+            state = state_dict[record.get_state()]
+            #duration = slowdown_duration(ecdf,duration,state)
+            duration = round(duration* slowdown_duration_test(ecdf,duration,state))
+        
         curr_end = record.get_end_time()
         if(curr_begin in end_dict):
             new_begin = end_dict[curr_begin]        
@@ -67,7 +85,7 @@ def update_comm_record(record,task_id,end_dict):
         record.set_precv_time(end_dict[precv])
 
 #TODO: make it work with multiple threads per task
-def scale_trace(record_list,state_dict,task_list,taskid):
+def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     first_record = True
     end_dict = {}
     comm_rec_list = []
@@ -89,7 +107,7 @@ def scale_trace(record_list,state_dict,task_list,taskid):
                     task_list_order.append(record.get_task_recv_id())
 
         elif(record.get_task_id() == taskid):
-            update_record(record,state_dict,end_dict,False)
+            update_record(record,state_dict,end_dict,ecdf,False)
 
     for record in comm_rec_list:
         update_comm_record(record,taskid,end_dict)
@@ -112,7 +130,7 @@ def scale_trace(record_list,state_dict,task_list,taskid):
                     first_record = False
                 elif((record.get_task_id() == task_id_) and
                     (not isinstance(record,CommunicationRecord))):
-                    update_record(record,state_dict,end_dict,True)
+                    update_record(record,state_dict,end_dict,ecdf,True)
         
         for record in comm_rec_list:
             update_comm_record(record,task_id_,end_dict)
