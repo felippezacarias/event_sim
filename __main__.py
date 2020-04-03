@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     print(nodes_conf)
 
-    task_list = [i for i in range(1,nodes_conf[0]+1)]
+    task_list = [i for i in range(1,nodes_conf[1]+1)]
 
     # TODO: check if task exists
     task_id = int(sys.argv[3])

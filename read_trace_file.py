@@ -14,6 +14,17 @@ def open_file(filename):
 def func_sort_time(e):
   return e.get_arriving_time()
 
+def process_header(header):
+    cores_ = (header.split(":"))[3]
+    tasks_ = (header.split(":"))[5]
+    cores_ = [int(x) for x in cores_.replace("("," ").replace(")"," ").replace(","," ").split()]
+    tasks_ = [int(x) for x in tasks_.replace("("," ").replace(")"," ").replace(","," ").split()]
+    tasks_ = tasks_[0]
+    nnodes = cores_.pop(0)
+    node_conf = [nnodes, tasks_, cores_]
+    return node_conf
+    
+
 def read_prv_file(filename):
     record_list = []
     header = ""
@@ -22,17 +33,15 @@ def read_prv_file(filename):
         exit(0)
     line = f.readline()
     header += line
-    tmp = line.split(",")
-    nodes_ = (line.split(":"))[3]
-    nodes_ = [int(x) for x in nodes_.replace("("," ").replace(")"," ").replace(","," ").split()]
-    nodes_.pop(0)
+    node_conf = process_header(header)
+
     # The pointer is alread in position to start the skip
-    to_skip = int(tmp[len(tmp)-1])
+    to_skip = node_conf[1] + 1
 
     for _ in range(to_skip):
         #next(f)
         header += f.readline()
-    
+
     for line in f:
         list_ = [int(x) for x in line.split(":")]
         type_ = list_[0]
@@ -45,7 +54,7 @@ def read_prv_file(filename):
     
     f.close()
 
-    return header,nodes_,record_list
+    return header,node_conf,record_list
 
 def separate_trace_record(record_list_):
     state_list = []
