@@ -1,4 +1,4 @@
-from enum_sim import GLOBAL_STATE_RUNNING,GLOBAL_STATE_WAITING
+from enum_sim import GLOBAL_STATE_RUNNING,GLOBAL_STATE_WAITING,GLOBAL_STATE_SYNC
 from event import Record,EventRecord,StateRecord,CommunicationRecord
 
 def min_wait_duration(record_list,state_dict): 
@@ -54,8 +54,8 @@ def update_record(record,state_dict,end_dict,min_wait,ecdf,non_interf_task=False
         duration = record.get_duration()
         if not non_interf_task:
             state = state_dict[record.get_state()]
-            #duration = slowdown_duration(ecdf,duration,state)
-            duration = round(duration* slowdown_duration_test(ecdf,duration,state))
+            duration = slowdown_duration(ecdf,duration,state)
+            #duration = round(duration* slowdown_duration_test(ecdf,duration,state))
         
         curr_end = record.get_end_time()
         if(curr_begin in end_dict):
@@ -72,11 +72,18 @@ def update_record(record,state_dict,end_dict,min_wait,ecdf,non_interf_task=False
                 (new_begin > curr_end)):
                 new_end = new_begin + min_wait
 
+            #if((non_interf_task) and
+            #    (state_dict[record.get_state()] == GLOBAL_STATE_SYNC)):
+            #    new_end = new_begin #+ (round(duration * 1.5))
+
             record.set_end_time(new_end)
             end_dict[curr_begin] = new_begin
             end_dict[curr_end] = new_end
         else: #problem with the threads records
             print(record)
+            if(state_dict[record.get_state()] == 2): #first record
+                end_dict[record.get_end_time()] = record.get_end_time()
+                end_dict[record.get_begin_time()] = record.get_begin_time()
             update_status = False            
 
 def update_comm_record(record,task_id,end_dict):
@@ -126,7 +133,6 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
         if(task_id_ not in task_list_order):
             task_list_order.append(task_id_)
 
-
     for task_id_ in task_list_order:
         for record in record_list:
             if(record.get_task_id() == task_id_):
@@ -136,3 +142,4 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
         
         for record in comm_rec_list:
             status = update_comm_record(record,task_id_,end_dict)
+    
