@@ -25,7 +25,6 @@ if __name__ == '__main__':
 
     # TODO: check if task exists
     task_id = int(sys.argv[3])
-    task_list.remove(task_id)
 
     print(task_id)
     print(task_list)
@@ -41,6 +40,9 @@ if __name__ == '__main__':
     ecdf = [xx, yy, xxp, yyp]
 
     tools.scale_trace(record_list,state_dict,task_list,task_id,ecdf)
+
+    tools.check_backward_comm(record_list)
+
     output = filename_ref.split("/")[-1]
     print(output)
     file = open(output+"_mod.prv","w") 

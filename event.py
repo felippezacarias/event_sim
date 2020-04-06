@@ -72,6 +72,13 @@ class EventRecord(Record):
     def get_arriving_time(self):
         return self.absolute_time
 
+    def has_event(self,event_type_,value_):
+        ret = False
+        if(event_type_ in self.event_type):
+            if(self.event_type[event_type_] == value_):
+                ret = True
+        return ret
+
     def __str__(self):
         return (str(self.type.value) +":"+ Record.__str__(self) + ":" + str(self.absolute_time) + ":" + 
                 str(self.event_type).replace(', ',':').replace("u'","").replace("'","").replace(' ','')[1:-1])
@@ -162,6 +169,10 @@ class CommunicationRecord(Record):
         return (str(self.type.value) +":"+  Record.__str__(self) + ":" + str(self.lsend) + ":" + str(self.psend) + ":" + 
                 str(self.cpu_recv_id) + ":" + str(self.ptask_recv_id) + ":" + str(self.task_recv_id) + ":" + str(self.thread_recv_id) + ":" + 
                 str(self.lrecv) + ":" + str(self.precv) + ":" + str(self.size) + ":" + str(self.tag))
+
+    def _eq_(self,comm):
+        return (self.lsend == comm.get_lsend_time() and self.psend == comm.get_psend_time()
+                and self.task_recv_id == comm.get_task_recv_id() and self.task_id == comm.get_task_id())
 
 class ExecutedEvent(Record):
 
