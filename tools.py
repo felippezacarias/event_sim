@@ -38,7 +38,7 @@ def slowdown_duration(ecdf,duration,state):
         return percentile_duration(ecdf,duration)
     return duration
 
-def update_record(record,state_dict,end_dict,ecdf,keep_ratio=False):
+def update_record(record,state_dict,end_dict,min_wait,ecdf,non_interf_task=False):
     update_status = True
     curr_begin = record.get_begin_time()
     if(isinstance(record,EventRecord)):
@@ -50,7 +50,7 @@ def update_record(record,state_dict,end_dict,ecdf,keep_ratio=False):
     else:
         # If it is running keep the duration for non interfered tasks
         duration = record.get_duration()
-        if not keep_ratio:
+        if not non_interf_task:
             state = state_dict[record.get_state()]
             #duration = slowdown_duration(ecdf,duration,state)
             duration = round(duration* slowdown_duration_test(ecdf,duration,state))
@@ -61,9 +61,14 @@ def update_record(record,state_dict,end_dict,ecdf,keep_ratio=False):
             record.set_begin_time(new_begin)
             new_end = new_begin + duration
             
-            if((keep_ratio) and (curr_end in end_dict) and
+            if((non_interf_task) and (curr_end in end_dict) and
                 (state_dict[record.get_state()] != GLOBAL_STATE_RUNNING)):
                 new_end = max(new_end,end_dict[curr_end])
+
+            if ((not non_interf_task) and 
+                (state_dict[record.get_state()] == GLOBAL_STATE_WAITING) and
+                (new_begin > curr_end)):
+                new_end = new_begin + min_wait
 
             record.set_end_time(new_end)
             end_dict[curr_begin] = new_begin
@@ -101,6 +106,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     comm_rec_list = []
     task_list_order = []
     min_wait = min_wait_duration(record_list,state_dict)
+    print(min_wait)
 
     for record in record_list:
         if(isinstance(record,CommunicationRecord)):
@@ -109,7 +115,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                 if(record.get_task_recv_id() not in task_list_order):
                     task_list_order.append(record.get_task_recv_id())
         elif(record.get_task_id() == taskid):
-            status = update_record(record,state_dict,end_dict,ecdf,False)
+            status = update_record(record,state_dict,end_dict,min_wait,ecdf,False)
 
     for record in comm_rec_list:
         update_comm_record(record,taskid,end_dict)
@@ -124,7 +130,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
             if(record.get_task_id() == task_id_):
                 if((record.get_task_id() == task_id_) and
                     (not isinstance(record,CommunicationRecord))):
-                    update_record(record,state_dict,end_dict,ecdf,True)
+                    update_record(record,state_dict,end_dict,min_wait,ecdf,True)
         
         for record in comm_rec_list:
             status = update_comm_record(record,task_id_,end_dict)
