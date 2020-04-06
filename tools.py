@@ -5,7 +5,9 @@ def min_wait_duration(record_list,state_dict):
     duration_list =  ([x.get_duration() for x in record_list 
                         if((state_dict[x.get_state()] == GLOBAL_STATE_WAITING) and 
                             (isinstance(x,StateRecord))) ])
-    return min(duration_list)
+    if duration_list:
+        return min(duration_list)
+    return 0
 
 def list_duration(record_list,state_dict,interf_task): 
     return ([x.get_duration() for x in record_list 
