@@ -1,6 +1,9 @@
 from enum_sim import GLOBAL_STATE_RUNNING,GLOBAL_STATE_WAITING,GLOBAL_STATE_SYNC,GLOBAL_STATE_OTHERS
 from event import Record,EventRecord,StateRecord,CommunicationRecord
 
+def arr_idx_task(id):
+    return (id -1)
+
 def min_wait_duration(record_list,state_dict): 
     duration_list =  ([x.get_duration() for x in record_list 
                         if((state_dict[x.get_state()] == GLOBAL_STATE_WAITING) and 
@@ -24,7 +27,7 @@ def percentile_duration(ecdf,duration):
     # We return the first occurence
     duration_index = ecdf[0].index(duration)
     ref_percentile = ecdf[1][duration_index]
-
+    
     prof_percent_index = ecdf[3].index(ref_percentile)
     prof_duration = ecdf[2][prof_percent_index]
 
@@ -143,6 +146,30 @@ def scale_trace1(record_list,state_dict,task_list,taskid,ecdf):
         for record in comm_rec_list:
             status = update_comm_record(record,task_id_,end_dict)
 
+#Returns the avg noise of sync for each thread
+def sync_noise(record_list,task_list):
+    avg = []
+    aux = []
+    idx = 0
+    for i in range(len(task_list)):
+        avg.append(0)
+    for record in record_list:
+        if(isinstance(record,StateRecord) and 
+            (record.get_state() == 5)):
+            aux.append(record)
+
+        if(len(aux) == len(task_list)):
+            nmaxst = max([x.get_begin_time() for x in aux])
+            for x in aux:
+                avg[arr_idx_task(x.get_task_id())] += (x.get_end_time() - (nmaxst))
+            aux = []
+            idx += 1
+
+    avg = [round(x/idx) for x in avg]
+
+    return avg
+
+                            
 
 def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,taskinterf,task_record_idx,dependency):
     update_status = True
@@ -171,7 +198,15 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
                 (aux.has_event(50000003,31))):
                 dependency.append(record)
                 task_record_idx[current_task]+=1 #I'm sure there are more records
-                return False,0
+                return False,GLOBAL_STATE_OTHERS
+        
+        if(state == GLOBAL_STATE_SYNC): 
+            aux = record_list[recordid+1]
+            if(isinstance(aux,EventRecord) and
+                (aux.has_event(50000002,8))): #barrier
+                dependency.append(record)
+                task_record_idx[current_task]+=1 #I'm sure there are more records
+                return False,GLOBAL_STATE_SYNC
 
         if(state == GLOBAL_STATE_WAITING):
             # comm is the record with some_task_send:current_task_recv
@@ -237,7 +272,7 @@ def check_bound(task_record_idx,current_task,task_list,record_length):
         current_task = task_list[aux]
     return current_task
 
-def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
+def scale_trace(record_list,state_dict,task_list,taskid,ecdf,sync_noise_avg):
     status = True
     end_dict = {}
     task_record_idx = []
@@ -271,7 +306,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
             status, ret_task = update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,taskid,task_record_idx,dependency)
         if((status) and (current_task == ret_task)):
             task_record_idx[current_task]+=1
-        elif(ret_task == 0): #came from init or other place
+        elif(ret_task == GLOBAL_STATE_OTHERS): #came from init or other place
             if(len(dependency) == len(task_list)):
                 max_end = max([end_dict[x.get_begin_time()]+x.get_duration() for x in dependency])
                 for dep in dependency:
@@ -285,6 +320,35 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                     end_dict[curr_end] = max_end
                 #reset to the interf task   
                 current_task = taskid
+                #Important reset dependency list
+                dependency = []
+            else:
+                aux = (current_task)%len(task_list)
+                current_task = task_list[aux]
+        elif(ret_task == GLOBAL_STATE_SYNC):
+            if(len(dependency) == len(task_list)):
+                max_start = max([end_dict[x.get_begin_time()] for x in dependency])
+                for dep in dependency:
+                    rec_task_id = dep.get_task_id()
+                    curr_begin = dep.get_begin_time()
+                    curr_end = dep.get_end_time()
+                    new_begin = end_dict[curr_begin]
+                    new_end = new_begin + dep.get_duration() # maybe it is not the best
+                    
+                    #It does not work
+                    #if(new_begin < max_start):
+                    #    new_end = new_end + sync_noise_avg[arr_idx_task(rec_task_id)]
+                    if(new_begin < max_start):
+                        new_end = max_start + sync_noise_avg[arr_idx_task(rec_task_id)]
+                    elif(new_begin == max_start):
+                        new_end = new_begin + abs(sync_noise_avg[arr_idx_task(rec_task_id)])
+
+                    dep.set_begin_time(new_begin)
+                    dep.set_end_time(new_end)
+                    end_dict[curr_end] = new_end
+                #reset to the interf task   
+                current_task = taskid
+                #Important reset dependency list
                 dependency = []
             else:
                 aux = (current_task)%len(task_list)

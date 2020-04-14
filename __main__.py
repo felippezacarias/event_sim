@@ -29,6 +29,9 @@ if __name__ == '__main__':
     print(task_id)
     print(task_list)
 
+    sync_noise_avg = tools.sync_noise(record_list,task_list)
+    print(sync_noise_avg)
+
     # Calculating the percentile of the reference and profile trace
     duration_ref = tools.list_duration(record_list,state_dict,task_id)
     xx, yy = tools.compute_ecdf(duration_ref)
@@ -39,7 +42,7 @@ if __name__ == '__main__':
 
     ecdf = [xx, yy, xxp, yyp]
 
-    tools.scale_trace(record_list,state_dict,task_list,task_id,ecdf)
+    tools.scale_trace(record_list,state_dict,task_list,task_id,ecdf,sync_noise_avg)
 
     tools.check_backward_comm(record_list)
 
