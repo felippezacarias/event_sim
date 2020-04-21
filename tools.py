@@ -165,7 +165,8 @@ def sync_noise(record_list,task_list):
             aux = []
             idx += 1
 
-    avg = [round(x/idx) for x in avg]
+    if(idx):
+        avg = [round(x/idx) for x in avg]
 
     return avg
 
@@ -210,7 +211,7 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
 
         if(state == GLOBAL_STATE_WAITING):
             # comm is the record with some_task_send:current_task_recv
-            # record is the waiting line for current_task
+            # record is the waiting line for 
             comm = dependency.pop()
             lsend = comm.get_lsend_time()
             psend = comm.get_psend_time()
@@ -309,6 +310,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf,sync_noise_avg):
         elif(ret_task == GLOBAL_STATE_OTHERS): #came from init or other place
             if(len(dependency) == len(task_list)):
                 max_end = max([end_dict[x.get_begin_time()]+x.get_duration() for x in dependency])
+                # It may be wrong if there are diff dependencies in the structure
                 for dep in dependency:
                     curr_begin = dep.get_begin_time()
                     new_begin = end_dict[curr_begin]

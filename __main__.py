@@ -28,6 +28,8 @@ if __name__ == '__main__':
 
     print(task_id)
     print(task_list)
+    print(len(task_list))
+    print(record_list[0])
 
     sync_noise_avg = tools.sync_noise(record_list,task_list)
     print(sync_noise_avg)
@@ -36,8 +38,11 @@ if __name__ == '__main__':
     duration_ref = tools.list_duration(record_list,state_dict,task_id)
     xx, yy = tools.compute_ecdf(duration_ref)
 
+    check_task_ref = 1
+    if(filename_ref == filename_interf_profile):
+        check_task_ref = task_id
     # always task one, cause it was the interfered
-    duration_prof = tools.list_duration(profile_list,state_dict_prof,1)
+    duration_prof = tools.list_duration(profile_list,state_dict_prof,check_task_ref)
     xxp, yyp = tools.compute_ecdf(duration_prof)
 
     ecdf = [xx, yy, xxp, yyp]
