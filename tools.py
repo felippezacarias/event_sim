@@ -1,4 +1,4 @@
-from enum_sim import GLOBAL_STATE_RUNNING,GLOBAL_STATE_WAITING,GLOBAL_STATE_SYNC,GLOBAL_STATE_OTHERS
+from enum_sim import *
 from event import Record,EventRecord,StateRecord,CommunicationRecord
 
 def arr_idx_task(id):
@@ -170,6 +170,44 @@ def sync_noise(record_list,task_list):
 
     return avg
 
+#Returns the avg noise of init/finalize for each thread
+def init_finalize_noise(record_list,task_list,state_dict):
+    avg_init = []
+    avg_finalize = []
+    aux_init = []
+    aux_finalize = []
+    size = len(task_list)
+    idx = 0
+    for i in range(len(task_list)):
+        avg_init.append(0)
+        avg_finalize.append(0)
+    for record in record_list:
+        if(isinstance(record,StateRecord) and
+            ( state_dict[record.get_state()] == GLOBAL_STATE_OTHERS )):
+            aux = record_list[idx+1]
+            if(isinstance(aux,EventRecord) and
+                (aux.has_event(50000003,31))):
+                aux_init.append(record)
+            if(isinstance(aux,EventRecord) and
+                (aux.has_event(50000003,32))):
+                aux_finalize.append(record)
+        idx+=1
+
+
+    nmaxst = max([x.get_begin_time() for x in aux_init])
+    for x in aux_init:
+        avg_init[arr_idx_task(x.get_task_id())] += (x.get_end_time() - (nmaxst))
+    
+    nmaxst = max([x.get_begin_time() for x in aux_finalize])
+    for x in aux_finalize:
+        avg_finalize[arr_idx_task(x.get_task_id())] += (x.get_end_time() - (nmaxst))
+
+    # Only one init and finalize
+    avg_init = [x for x in avg_init]
+    avg_finalize = [x for x in avg_finalize]
+
+    return [avg_init,avg_finalize]
+
                             
 
 def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,taskinterf,task_record_idx,dependency):
@@ -199,7 +237,12 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
                 (aux.has_event(50000003,31))):
                 dependency.append(record)
                 task_record_idx[current_task]+=1 #I'm sure there are more records
-                return False,GLOBAL_STATE_OTHERS
+                return False,GLOBAL_STATE_INIT
+            elif(isinstance(aux,EventRecord) and
+                (aux.has_event(50000003,32))):
+                dependency.append(record)
+                task_record_idx[current_task]+=1 #I'm sure there are more records
+                return False,GLOBAL_STATE_FINALIZE
         
         if(state == GLOBAL_STATE_SYNC): 
             aux = record_list[recordid+1]
@@ -220,9 +263,13 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             curr_begin = record.get_begin_time()
             curr_end = record.get_end_time()
             duration = record.get_duration()
+
             
             new_end = end_dict[curr_begin]+duration
-            if(end_dict[psend] > new_end):
+            # If they finish at the same time, use the previous value
+            if(curr_end in end_dict):
+                new_end = end_dict[curr_end]
+            elif(end_dict[psend] > new_end):
                 new_end = end_dict[psend] #plus a constant??
             else:
                 #print(record)
@@ -235,7 +282,7 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
                     new_end = end_dict[psend] + min_wait
 
             end_dict[curr_end] = new_end
-
+            
             comm.set_lsend_time(end_dict[lsend])
             comm.set_psend_time(end_dict[psend])
             comm.set_lrecv_time(end_dict[lrecv])
@@ -273,15 +320,22 @@ def check_bound(task_record_idx,current_task,task_list,record_length):
         current_task = task_list[aux]
     return current_task
 
-def scale_trace(record_list,state_dict,task_list,taskid,ecdf,sync_noise_avg):
+def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     status = True
     end_dict = {}
     task_record_idx = []
     dependency = []
     comm_rec_list = []
     task_list_order = []
+
     min_wait = min_wait_duration(record_list,state_dict)
     print(min_wait)
+
+    sync_noise_avg = sync_noise(record_list,task_list)
+    print(sync_noise_avg)
+
+    init_finalize_noise_avg = init_finalize_noise(record_list,task_list,state_dict)
+    print(init_finalize_noise_avg)
 
     # +1 to match the taskid and list id
     for i in range(len(task_list)+1):
@@ -307,19 +361,25 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf,sync_noise_avg):
             status, ret_task = update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,taskid,task_record_idx,dependency)
         if((status) and (current_task == ret_task)):
             task_record_idx[current_task]+=1
-        elif(ret_task == GLOBAL_STATE_OTHERS): #came from init or other place
+        elif((ret_task == GLOBAL_STATE_INIT) or
+            (ret_task == GLOBAL_STATE_FINALIZE)): #came from init or finalize
             if(len(dependency) == len(task_list)):
-                max_end = max([end_dict[x.get_begin_time()]+x.get_duration() for x in dependency])
+                # id to get the correct "noise"
+                is_fin = 0 if (ret_task == GLOBAL_STATE_INIT) else 1
+                max_end = max([end_dict[x.get_begin_time()] for x in dependency])
                 # It may be wrong if there are diff dependencies in the structure
+                # but I'm assuming in this stage there is only dependencies for init/finalize
                 for dep in dependency:
                     curr_begin = dep.get_begin_time()
                     new_begin = end_dict[curr_begin]
                     curr_end =  dep.get_end_time()
+                    # Uses the highest beginning and apply the "noise"
+                    new_end = max_end + init_finalize_noise_avg[is_fin][arr_idx_task(dep.get_task_id())]
         
                     dep.set_begin_time(new_begin)
-                    dep.set_end_time(max_end)
+                    dep.set_end_time(new_end)
                     end_dict[curr_begin] = new_begin
-                    end_dict[curr_end] = max_end
+                    end_dict[curr_end] = new_end
                 #reset to the interf task   
                 current_task = taskid
                 #Important reset dependency list
@@ -328,6 +388,8 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf,sync_noise_avg):
                 aux = (current_task)%len(task_list)
                 current_task = task_list[aux]
         elif(ret_task == GLOBAL_STATE_SYNC):
+            # It may be wrong if there are diff dependencies in the structure
+            # Assuming it is barrier on comm_world.
             if(len(dependency) == len(task_list)):
                 max_start = max([end_dict[x.get_begin_time()] for x in dependency])
                 for dep in dependency:
