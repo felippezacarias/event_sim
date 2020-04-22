@@ -45,6 +45,9 @@ class Record(object):
 
     def get_task_id(self):
         return self.task_id
+    
+    def get_thread_id(self):
+        return self.thread_id
 
     def __str__(self):
         return str(self.cpu_id) + ":" + str(self.app_id)  + ":" + str(self.task_id) + ":" + str(self.thread_id)

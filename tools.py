@@ -43,109 +43,6 @@ def slowdown_duration(ecdf,duration,state):
         return percentile_duration(ecdf,duration)
     return duration
 
-def update_record1(record,state_dict,end_dict,min_wait,ecdf,non_interf_task=False):
-    update_status = True
-    curr_begin = record.get_begin_time()
-    if(isinstance(record,EventRecord)):
-        if(curr_begin in end_dict):
-            new_begin = end_dict[curr_begin]
-            record.set_begin_time(new_begin)
-        else: # first record
-            end_dict[curr_begin] = curr_begin
-    else:
-        # If it is running keep the duration for non interfered tasks
-        duration = record.get_duration()
-        if not non_interf_task:
-            state = state_dict[record.get_state()]
-            duration = slowdown_duration(ecdf,duration,state)
-            #duration = round(duration* slowdown_duration_test(ecdf,duration,state))
-        
-        curr_end = record.get_end_time()
-        if(curr_begin in end_dict):
-            new_begin = end_dict[curr_begin]        
-            record.set_begin_time(new_begin)
-            new_end = new_begin + duration
-            
-            if((non_interf_task) and (curr_end in end_dict) and
-                (state_dict[record.get_state()] != GLOBAL_STATE_RUNNING)):
-                new_end = max(new_end,end_dict[curr_end])
-
-            if ((not non_interf_task) and 
-                (state_dict[record.get_state()] == GLOBAL_STATE_WAITING) and
-                (new_begin > curr_end)):
-                new_end = new_begin + min_wait
-
-            #if((non_interf_task) and
-            #    (state_dict[record.get_state()] == GLOBAL_STATE_SYNC)):
-            #    new_end = new_begin #+ (round(duration * 1.5))
-
-            record.set_end_time(new_end)
-            end_dict[curr_begin] = new_begin
-            end_dict[curr_end] = new_end
-        else: #problem with the threads records
-            print(record)
-            if(state_dict[record.get_state()] == 2): #first record
-                end_dict[record.get_end_time()] = record.get_end_time()
-                end_dict[record.get_begin_time()] = record.get_begin_time()
-            update_status = False            
-
-def update_comm_record(record,task_id,end_dict):
-    task_id_send = record.get_task_id()
-    task_id_recv = record.get_task_recv_id()
-
-    if(task_id == task_id_send):
-        lsend = record.get_lsend_time()
-        psend = record.get_psend_time()
-        record.set_lsend_time(end_dict[lsend])
-        record.set_psend_time(end_dict[psend])
-
-        #Checking the other task
-        precv = record.get_precv_time()
-        ppsend = end_dict[psend] #+ 100000
-        if(precv < ppsend):
-            end_dict[precv] = ppsend
-
-    elif(task_id == task_id_recv):
-        lrecv = record.get_lrecv_time()
-        precv = record.get_precv_time()
-        record.set_lrecv_time(end_dict[lrecv])
-        record.set_precv_time(end_dict[precv])
-
-#TODO: make it work with multiple threads per task
-def scale_trace1(record_list,state_dict,task_list,taskid,ecdf):
-    status = True
-    end_dict = {}
-    comm_rec_list = []
-    task_list_order = []
-    min_wait = min_wait_duration(record_list,state_dict)
-    print(min_wait)
-
-    for record in record_list:
-        if(isinstance(record,CommunicationRecord)):
-            comm_rec_list.append(record)
-            if(record.get_task_id() == taskid):
-                if(record.get_task_recv_id() not in task_list_order):
-                    task_list_order.append(record.get_task_recv_id())
-        elif(record.get_task_id() == taskid):
-            status = update_record(record,state_dict,end_dict,min_wait,ecdf,False)
-
-    for record in comm_rec_list:
-        update_comm_record(record,taskid,end_dict)
-
-    for task_id_ in task_list:
-        if(task_id_ not in task_list_order):
-            task_list_order.append(task_id_)
-
-    for task_id_ in task_list_order:
-        for record in record_list:
-            if(record.get_task_id() == task_id_):
-                if((record.get_task_id() == task_id_) and
-                    (not isinstance(record,CommunicationRecord))):
-                    update_record(record,state_dict,end_dict,min_wait,ecdf,True)
-        
-        for record in comm_rec_list:
-            status = update_comm_record(record,task_id_,end_dict)
-
 #Returns the avg noise of sync for each thread
 def sync_noise(record_list,task_list):
     avg = []
@@ -255,6 +152,7 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
         if(state == GLOBAL_STATE_WAITING):
             # comm is the record with some_task_send:current_task_recv
             # record is the waiting line for 
+            #comm_rec = [count for count, item in enumerate(dependency) if (comm.get_task_recv_id() == current_task)]
             comm = dependency.pop()
             lsend = comm.get_lsend_time()
             psend = comm.get_psend_time()
@@ -264,12 +162,13 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             curr_end = record.get_end_time()
             duration = record.get_duration()
 
-            
             new_end = end_dict[curr_begin]+duration
-            # If they finish at the same time, use the previous value
+            # If they finish at the same time, use the previous value?
+            # TODO: it works for hydro, but breaks other traces
             if(curr_end in end_dict):
+                print(curr_end)
                 new_end = end_dict[curr_end]
-            elif(end_dict[psend] > new_end):
+            if(end_dict[psend] > new_end):
                 new_end = end_dict[psend] #plus a constant??
             else:
                 #print(record)
@@ -309,6 +208,8 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             return True,current_task
         else: #problem with the threads records
             print("else - {}".format(record))
+            #if(dependency):
+            #     print([str(x) for x in dependency])
             if(state_dict[record.get_state()] == 2): #first record or ??thread???
                 end_dict[record.get_end_time()] = record.get_end_time()
                 end_dict[record.get_begin_time()] = record.get_begin_time()
@@ -375,6 +276,8 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                     curr_end =  dep.get_end_time()
                     # Uses the highest beginning and apply the "noise"
                     new_end = max_end + init_finalize_noise_avg[is_fin][arr_idx_task(dep.get_task_id())]
+                    if(new_begin > new_end):
+                        new_end = max_end + abs(init_finalize_noise_avg[is_fin][arr_idx_task(dep.get_task_id())])
         
                     dep.set_begin_time(new_begin)
                     dep.set_end_time(new_end)
@@ -392,6 +295,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
             # Assuming it is barrier on comm_world.
             if(len(dependency) == len(task_list)):
                 max_start = max([end_dict[x.get_begin_time()] for x in dependency])
+                min_duration = min([x.get_duration() for x in dependency])
                 for dep in dependency:
                     rec_task_id = dep.get_task_id()
                     curr_begin = dep.get_begin_time()
@@ -399,13 +303,19 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                     new_begin = end_dict[curr_begin]
                     new_end = new_begin + dep.get_duration() # maybe it is not the best
                     
-                    #It does not work
+
+                    new_end = max_start + abs(sync_noise_avg[arr_idx_task(rec_task_id)])
+                    if(new_begin > new_end):
+                        new_end = new_begin + min_duration
                     #if(new_begin < max_start):
-                    #    new_end = new_end + sync_noise_avg[arr_idx_task(rec_task_id)]
-                    if(new_begin < max_start):
-                        new_end = max_start + sync_noise_avg[arr_idx_task(rec_task_id)]
-                    elif(new_begin == max_start):
-                        new_end = new_begin + abs(sync_noise_avg[arr_idx_task(rec_task_id)])
+                    #    new_end = max_start + abs(sync_noise_avg[arr_idx_task(rec_task_id)])
+                    #    if(new_begin > new_end):
+                    #        print(dep)  
+                    #elif(new_begin == max_start):
+                    #    #print("{} - {}".format(dep.get_duration(),abs(sync_noise_avg[arr_idx_task(rec_task_id)])))
+                    #    new_end = max_start + abs(sync_noise_avg[arr_idx_task(rec_task_id)])
+
+
 
                     dep.set_begin_time(new_begin)
                     dep.set_end_time(new_end)
@@ -420,8 +330,29 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
         else:
             current_task = ret_task
 
-def check_backward_comm(record_list):
+# Check for backward communication and erros in the trace
+def check_trace(record_list,task_list):
+    check_time = [0 for x in task_list]
+    # Change later
+    main_thread = [(x-1)*8+1 for x in task_list]
+    max_trace_time = 0
+    print(check_time)
     for record in record_list:
         if(isinstance(record,CommunicationRecord)):
             if(record.get_psend_time() >  record.get_precv_time()):
                 print("Backward comm -> {}".format(record))
+        elif(isinstance(record,StateRecord)):
+            if(record.get_begin_time() > record.get_end_time()):
+                print("wrong timming -> {}".format(record))
+            task_id = record.get_task_id()
+            if((record.get_state() != 2) and 
+                (main_thread[arr_idx_task(task_id)] == record.get_thread_id())):
+                if(check_time[arr_idx_task(task_id)] and 
+                    (check_time[arr_idx_task(task_id)]-record.get_begin_time()) != 0):
+                        print("Time breaking -> {}".format(record))
+                check_time[arr_idx_task(task_id)] = record.get_end_time()
+        else:
+            if(record.has_event(40000001,0)):
+                max_trace_time = max(max_trace_time,record.get_begin_time())
+    
+    return max_trace_time

@@ -1,3 +1,4 @@
+import re
 import read_trace_file
 import sys
 import tools
@@ -29,7 +30,6 @@ if __name__ == '__main__':
     print(task_id)
     print(task_list)
     print(len(task_list))
-    print(record_list[0])
 
     # Calculating the percentile of the reference and profile trace
     duration_ref = tools.list_duration(record_list,state_dict,task_id)
@@ -46,10 +46,12 @@ if __name__ == '__main__':
 
     tools.scale_trace(record_list,state_dict,task_list,task_id,ecdf)
 
-    tools.check_backward_comm(record_list)
+    # Updating header
+    max_trace_time = tools.check_trace(record_list,task_list)
+    regex = re.compile(r"[0-9]*_ns", re.IGNORECASE)
+    header = regex.sub(str(max_trace_time)+"_ns", header)
 
     output = filename_ref.split("/")[-1]
-    print(output)
     file = open(output+"_mod.prv","w") 
     file.write(header) 
     for record in record_list:
