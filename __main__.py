@@ -33,6 +33,7 @@ if __name__ == '__main__':
 
     # Calculating the percentile of the reference and profile trace
     duration_ref = tools.list_duration(record_list,state_dict,task_id)
+    print(len(duration_ref))
     xx, yy = tools.compute_ecdf(duration_ref)
 
     check_task_ref = 1

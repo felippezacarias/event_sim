@@ -113,7 +113,9 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
     record = record_list[recordid]
     curr_begin = record.get_begin_time()
     if(isinstance(record,CommunicationRecord)):
-        dependency.append(record)
+        if(record.get_task_recv_id() not in dependency):
+            dependency[record.get_task_recv_id()] = []
+        dependency[record.get_task_recv_id()].append(record)
         task_record_idx[current_task]+=1
         return False,record.get_task_recv_id()
     elif(isinstance(record,EventRecord)):
@@ -132,12 +134,16 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             aux = record_list[recordid+1]
             if(isinstance(aux,EventRecord) and
                 (aux.has_event(50000003,31))):
-                dependency.append(record)
+                if(current_task not in dependency):
+                    dependency[current_task] = []
+                dependency[current_task].append(record)
                 task_record_idx[current_task]+=1 #I'm sure there are more records
                 return False,GLOBAL_STATE_INIT
             elif(isinstance(aux,EventRecord) and
                 (aux.has_event(50000003,32))):
-                dependency.append(record)
+                if(current_task not in dependency):
+                    dependency[current_task] = []
+                dependency[current_task].append(record)
                 task_record_idx[current_task]+=1 #I'm sure there are more records
                 return False,GLOBAL_STATE_FINALIZE
         
@@ -145,47 +151,68 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             aux = record_list[recordid+1]
             if(isinstance(aux,EventRecord) and
                 (aux.has_event(50000002,8))): #barrier
-                dependency.append(record)
+                if(current_task not in dependency):
+                    dependency[current_task] = []
+                dependency[current_task].append(record)
                 task_record_idx[current_task]+=1 #I'm sure there are more records
                 return False,GLOBAL_STATE_SYNC
 
         if(state == GLOBAL_STATE_WAITING):
-            # comm is the record with some_task_send:current_task_recv
+            # comm is the record with some_task_send:current_record_task_recv
             # record is the waiting line for 
-            #comm_rec = [count for count, item in enumerate(dependency) if (comm.get_task_recv_id() == current_task)]
-            comm = dependency.pop()
-            lsend = comm.get_lsend_time()
-            psend = comm.get_psend_time()
-            lrecv = comm.get_lrecv_time()
-            precv = comm.get_precv_time()
-            curr_begin = record.get_begin_time()
-            curr_end = record.get_end_time()
-            duration = record.get_duration()
+            while dependency[record.get_task_id()]:
+                # If there is only one communication we can update the record right away
+                # Otherwise we have to keep it till its last comm
+                comm = dependency[record.get_task_id()].pop()
+                # If there is comm in dependency and its end_time is equal the end_time of the wait record, we don't update right now
+                update = False if((len(dependency[record.get_task_id()]) >= 1) and
+                                 (dependency[record.get_task_id()][-1].get_precv_time() == record.get_end_time())) else True
 
-            new_end = end_dict[(record.get_task_id(),curr_begin)]+duration
+                lsend = comm.get_lsend_time()
+                psend = comm.get_psend_time()
+                lrecv = comm.get_lrecv_time()
+                precv = comm.get_precv_time()
+                curr_begin = record.get_begin_time()
+                curr_end = record.get_end_time()
+                duration = record.get_duration()
 
-            if(end_dict[(comm.get_task_id(),psend)] > new_end):
-                new_end = end_dict[(comm.get_task_id(),psend)] #plus a constant??
-            else:
-                #print(record)
-                #print(comm)
-                #print("{} {} {} {} {}".format(psend,end_dict[psend],end_dict[curr_begin],duration,min_wait))
-                new_end_min_wait = end_dict[(record.get_task_id(),curr_begin)]+min_wait
-                if(end_dict[(comm.get_task_id(),psend)] < new_end_min_wait):
-                    new_end = new_end_min_wait
+                new_end = end_dict[(record.get_task_id(),curr_begin)]+duration
+
+                # If the curr_end is in the dict, we use it because it is higher than the oldest send
+                # By oldest we mean when the record happen in time
+                if((record.get_task_id(),curr_end) in end_dict):
+                    new_end = end_dict[(record.get_task_id(),curr_end)]
                 else:
-                    new_end = end_dict[(comm.get_task_id(),psend)] + min_wait
+                    if(end_dict[(comm.get_task_id(),psend)] > new_end):
+                        new_end = end_dict[(comm.get_task_id(),psend)] 
+                    else:
+                        new_end_min_wait = end_dict[(record.get_task_id(),curr_begin)]+min_wait
+                        if(end_dict[(comm.get_task_id(),psend)] < new_end_min_wait):
+                            new_end = new_end_min_wait
+                        else:
+                            new_end = end_dict[(comm.get_task_id(),psend)] + min_wait
 
-            end_dict[(record.get_task_id(),curr_end)] = new_end
-            
-            comm.set_lsend_time(end_dict[(comm.get_task_id(),lsend)])
-            comm.set_psend_time(end_dict[(comm.get_task_id(),psend)])
-            comm.set_lrecv_time(end_dict[(record.get_task_id(),lrecv)])
-            comm.set_precv_time(end_dict[(record.get_task_id(),precv)])
+                end_dict[(record.get_task_id(),curr_end)] = new_end
+                
+                comm.set_lsend_time(end_dict[(comm.get_task_id(),lsend)])
+                comm.set_psend_time(end_dict[(comm.get_task_id(),psend)])
+                comm.set_lrecv_time(end_dict[(record.get_task_id(),lrecv)])
+                comm.set_precv_time(end_dict[(record.get_task_id(),precv)])
 
-            record.set_begin_time(end_dict[(record.get_task_id(),curr_begin)])
-            record.set_end_time(new_end)
+                # If we have to update the record we have to break the loop because there is no comm record left or
+                # the comm in dependency is not realated to the current wait record
+                if update:
+                    record.set_begin_time(end_dict[(record.get_task_id(),curr_begin)])
+                    record.set_end_time(new_end)
+                    break
+
             task_record_idx[current_task]+=1
+
+            # Removing key to not interfering in other dependencies
+            # We are saying that the task has no dependencies
+            if(len(dependency[record.get_task_id()]) < 1):
+                dependency.pop(record.get_task_id(),None)
+
             return True,comm.get_task_id()
 
         if (current_task == taskinterf):           
@@ -206,8 +233,7 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
             if((state_dict[record.get_state()] != "Not created") and
                  (state_dict[record.get_state()] != "I/O")):
                 print("else - {}".format(record))
-            #if(dependency):
-            #     print([str(x) for x in dependency])
+
             if(state_dict[record.get_state()] == "Not created"): #first record or ??thread???
                 end_dict[(record.get_task_id(),record.get_end_time())] = record.get_end_time()
                 end_dict[(record.get_task_id(),record.get_begin_time())] = record.get_begin_time()
@@ -223,7 +249,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     status = True
     end_dict = {}
     task_record_idx = []
-    dependency = []
+    dependency = {}
     comm_rec_list = []
     task_list_order = []
 
@@ -265,10 +291,15 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
             if(len(dependency) == len(task_list)):
                 # id to get the correct "noise"
                 is_fin = 0 if (ret_task == GLOBAL_STATE_INIT) else 1
-                max_end = max([end_dict[(x.get_task_id(),x.get_begin_time())] for x in dependency])
+                max_end = max([end_dict[(dependency[x][0].get_task_id(),dependency[x][0].get_begin_time())] for x in dependency])
+                # Printing a warning if there are more than one record per task for mpi_init/finalize
+                warning_count = max([len(dependency[x]) for x in dependency])
+                if(warning_count > 1):
+                    print("WARNING -> {} dependency(ies) found during mpi init/finalize processing!\nGenerated trace may be inconsistent!".format(warning_count))
                 # It may be wrong if there are diff dependencies in the structure
                 # but I'm assuming in this stage there is only dependencies for init/finalize
-                for dep in dependency:
+                for dep_id in dependency:
+                    dep = dependency[dep_id].pop()
                     curr_begin = dep.get_begin_time()
                     new_begin = end_dict[(dep.get_task_id(),curr_begin)]
                     curr_end =  dep.get_end_time()
@@ -284,7 +315,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                 #reset to the interf task   
                 current_task = taskid
                 #Important reset dependency list
-                dependency = []
+                dependency = {}
             else:
                 aux = (current_task)%len(task_list)
                 current_task = task_list[aux]
@@ -292,9 +323,13 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
             # It may be wrong if there are diff dependencies in the structure
             # Assuming it is barrier on comm_world.
             if(len(dependency) == len(task_list)):
-                max_start = max([end_dict[(x.get_task_id(),x.get_begin_time())] for x in dependency])
-                min_duration = min([x.get_duration() for x in dependency])
-                for dep in dependency:
+                max_start = max([end_dict[(dependency[x][0].get_task_id(),dependency[x][0].get_begin_time())] for x in dependency])
+                min_duration = min([dependency[x][0].get_duration() for x in dependency])
+                warning_count = max([len(dependency[x]) for x in dependency])
+                if(warning_count > 1):
+                    print("WARNING -> {} dependency(ies) found during Synchronization phase processing!\nGenerated trace may be inconsistent!".format(warning_count))
+                for dep_id in dependency:
+                    dep = dependency[dep_id].pop()
                     rec_task_id = dep.get_task_id()
                     curr_begin = dep.get_begin_time()
                     curr_end = dep.get_end_time()
@@ -321,7 +356,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
                 #reset to the interf task   
                 current_task = taskid
                 #Important reset dependency list
-                dependency = []
+                dependency = {}
             else:
                 aux = (current_task)%len(task_list)
                 current_task = task_list[aux]
@@ -338,16 +373,16 @@ def check_trace(record_list,task_list):
     for record in record_list:
         if(isinstance(record,CommunicationRecord)):
             if(record.get_psend_time() >  record.get_precv_time()):
-                print("Backward comm -> {}".format(record))
+                print("Backward comm -> {}\nGenerated trace may be inconsistent!".format(record))
         elif(isinstance(record,StateRecord)):
             if(record.get_begin_time() > record.get_end_time()):
-                print("wrong timming -> {}".format(record))
+                print("wrong timming -> {}\nGenerated trace may be inconsistent!".format(record))
             task_id = record.get_task_id()
             if((record.get_state() != 2) and 
                 (main_thread[arr_idx_task(task_id)] == record.get_thread_id())):
                 if(check_time[arr_idx_task(task_id)] and 
                     (check_time[arr_idx_task(task_id)]-record.get_begin_time()) != 0):
-                        print("Time breaking -> {}".format(record))
+                        print("Time breaking -> {}\nGenerated trace may be inconsistent!".format(record))
                 check_time[arr_idx_task(task_id)] = record.get_end_time()
         else:
             if(record.has_event(40000001,0)):
