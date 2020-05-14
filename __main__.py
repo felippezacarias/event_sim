@@ -38,10 +38,14 @@ if __name__ == '__main__':
 
     check_task_ref = 1
     if(filename_ref == filename_interf_profile):
+        print("using task_ref {}".format(task_id))
         check_task_ref = task_id
     # always task one, cause it was the interfered
     duration_prof = tools.list_duration(profile_list,state_dict_prof,check_task_ref)
     xxp, yyp = tools.compute_ecdf(duration_prof)
+
+    #tools.ecdf_plot(filename_interf_profile.split("/")[-1],xxp,yyp)
+    #exit(1)
 
     ecdf = [xx, yy, xxp, yyp]
 

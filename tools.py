@@ -1,8 +1,20 @@
 from enum_sim import *
 from event import Record,EventRecord,StateRecord,CommunicationRecord
+from matplotlib.backends.backend_pdf import PdfPages
+import matplotlib.pyplot as plt
 
 def arr_idx_task(id):
     return (id -1)
+
+def ecdf_plot(filename,xxp,yyp):
+    with PdfPages(filename) as pdf:
+        plt.plot(xxp,yyp, label='interf')
+        plt.ylabel('CDF')
+        plt.xlabel('duration (ns)')
+        plt.legend()
+        pdf.savefig()
+        plt.close()
+
 
 def min_wait_duration(record_list,state_dict): 
     duration_list =  ([x.get_duration() for x in record_list 
