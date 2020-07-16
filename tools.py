@@ -29,8 +29,9 @@ def list_duration(record_list,state_dict,interf_task):
                 if((state_dict[x.get_state()] == GLOBAL_STATE_RUNNING) and 
                     (isinstance(x,StateRecord)) and (x.get_task_id() == interf_task)) ])
 
-def compute_ecdf(duration_list):
-    xx = sorted(duration_list)
+def compute_ecdf(duration_list,cr_factor):
+    cr_duration_list = [int(x * cr_factor) for x in duration_list]
+    xx = sorted(cr_duration_list)
     n = len(xx)
     yy = [float(k)/n for k in range(0,n)]
     return xx,yy
@@ -41,11 +42,31 @@ def percentile_duration(ecdf,duration):
     ref_percentile = ecdf[1][duration_index]
     
     prof_percent_index = ecdf[3].index(ref_percentile)
+    #prof_duration = min(ecdf[2][prof_percent_index],ecdf[2][prof_percent_index-1])
     prof_duration = ecdf[2][prof_percent_index]
-
+    #if(prof_duration < duration):
+    #    print("[{},{}],{},{}".format(duration,prof_duration,ecdf[2][prof_percent_index],ecdf[2][prof_percent_index-1]))
+    #print("{},{}".format(duration,prof_duration))
     return prof_duration
 
-def slowdown_duration_test(ecdf,duration,state):
+def percentile_duration_test(ecdf,duration):
+    # We return the first occurence
+    duration_index = ecdf[0].index(duration)
+    ref_percentile = ecdf[1][duration_index]
+    
+    prof_percent_index = ecdf[3].index(ref_percentile)
+    #prof_duration = min(ecdf[2][prof_percent_index],ecdf[2][prof_percent_index-1])
+    prof_duration = ecdf[2][prof_percent_index]
+    if(prof_percent_index == 0):
+        return 0,prof_duration,ecdf[2][prof_percent_index+1]
+    elif (prof_percent_index == len(ecdf[2])-1):
+        return ecdf[2][prof_percent_index-1],prof_duration,0
+    #if(prof_duration < duration):
+    #    print("[{},{}],{},{}".format(duration,prof_duration,ecdf[2][prof_percent_index],ecdf[2][prof_percent_index-1]))
+    #print("{},{}".format(duration,prof_duration))
+    return ecdf[2][prof_percent_index-1],prof_duration,ecdf[2][prof_percent_index+1]
+
+def slowdown_duration_static(ecdf,duration,state):
     if(state == GLOBAL_STATE_RUNNING): # running
         return 1.5
     return 1
@@ -54,6 +75,11 @@ def slowdown_duration(ecdf,duration,state):
     if(state == GLOBAL_STATE_RUNNING): # running
         return percentile_duration(ecdf,duration)
     return duration
+
+def slowdown_duration_test(ecdf,duration,state):
+    if(state == GLOBAL_STATE_RUNNING): # running
+        return percentile_duration_test(ecdf,duration)
+    return 0,duration,0
 
 #Returns the avg noise of sync for each thread
 def sync_noise(record_list,task_list):
@@ -227,9 +253,12 @@ def update_record(record_list,state_dict,end_dict,min_wait,ecdf,current_task,tas
 
             return True,comm.get_task_id()
 
-        if (current_task == taskinterf):           
-            duration = slowdown_duration(ecdf,duration,state)
-            #duration = round(duration* slowdown_duration_test(ecdf,duration,state))
+        if (current_task == taskinterf):
+            old_duration = duration
+            duration = slowdown_duration(ecdf,duration,state)           
+            #pre,duration,pos = slowdown_duration_test(ecdf,duration,state)
+            #print("true_ecdf,{},{},{},{},{}".format(taskinterf,old_duration,duration,pre,pos))
+            ##duration = round(duration* slowdown_duration_test(ecdf,duration,state))
         
         curr_end = record.get_end_time()
         if((record.get_task_id(),curr_begin) in end_dict):
@@ -266,13 +295,13 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     task_list_order = []
 
     min_wait = min_wait_duration(record_list,state_dict)
-    print(min_wait)
+    #print(min_wait)
 
     sync_noise_avg = sync_noise(record_list,task_list)
-    print(sync_noise_avg)
+    #print(sync_noise_avg)
 
     init_finalize_noise_avg = init_finalize_noise(record_list,task_list,state_dict)
-    print(init_finalize_noise_avg)
+    #print(init_finalize_noise_avg)
 
     # +1 to match the taskid and list id
     for i in range(len(task_list)+1):
@@ -282,7 +311,7 @@ def scale_trace(record_list,state_dict,task_list,taskid,ecdf):
     #interfering task
     current_task = taskid
     record_length = len(record_list)
-    print(record_length)
+    #print(record_length)
     task_record_idx[0] = record_length
 
     while (min(task_record_idx) != record_length):
@@ -381,7 +410,7 @@ def check_trace(record_list,task_list):
     # Change later
     main_thread = [(x-1)*8+1 for x in task_list]
     max_trace_time = 0
-    print(check_time)
+    #print(check_time)
     for record in record_list:
         if(isinstance(record,CommunicationRecord)):
             if(record.get_psend_time() >  record.get_precv_time()):
